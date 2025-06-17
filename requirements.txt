@@ -1,0 +1,9 @@
+requests
+pandas
+numpy
+python-dotenv
+pyyaml
+schedule
+tenacity
+pytest
+requests-mock

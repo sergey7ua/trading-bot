@@ -1,0 +1,7 @@
+symbol: "EUR/USD"
+rsi_period: 14
+interval: "1min"
+limit: 50
+ma_period: 20
+ma_type: "SMA"
+api_wait_time: 3600
