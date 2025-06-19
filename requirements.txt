@@ -7,4 +7,3 @@ schedule
 tenacity
 pytest
 requests-mock
-TA-Lib
