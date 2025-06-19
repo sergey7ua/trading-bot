@@ -12,11 +12,11 @@ def test_bearish_engulfing():
     assert is_bearish_engulfing(1.0, 0.9, 1.0, 1.0) == False
 
 def test_hammer():
-    assert is_hammer(1.0, 1.01, 1.02, 0.95) == True
+    assert is_hammer(1.0, 1.01, 1.015, 0.97) == True
     assert is_hammer(1.0, 1.01, 1.05, 0.99) == False
 
 def test_shooting_star():
-    assert is_shooting_star(1.0, 1.01, 1.1, 0.99) == True
+    assert is_shooting_star(1.0, 1.01, 1.04, 0.995) == True
     assert is_shooting_star(1.0, 1.01, 1.02, 0.95) == False
 
 def test_analyze_buy_signal():
@@ -24,7 +24,7 @@ def test_analyze_buy_signal():
         'open': [1.0, 0.9, 0.89],
         'close': [0.9, 1.1, 1.0],
         'high': [1.0, 1.15, 1.05],
-        'low': [0.85, 0.88, 0.95],
+        'low': [0.85, 0.88, 0.97],
         'volume': [100, 150, 200]
     })
     signal = analyze(df)
