@@ -26,7 +26,7 @@ jobs:
       - name: Manage Railway Deployment
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          PROJECT_ID: 'your_project_id'
-          SERVICE_ID: 'your_service_id'
+          PROJECT_ID: 'b42d483d-1455-4c72-88bc-40c77b0fa204'
+          SERVICE_ID: '477d7cef-c57d-4f0e-8010-23c8f153903a'
         run: |
           python .github/workflows/manage_deployment.py
