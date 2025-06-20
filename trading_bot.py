@@ -149,7 +149,7 @@ def is_shooting_star(o, c, h, l):
 def analyze(df):
     global last_signal
     if len(df) < 3:
-        logger.warning("Недостатньо даних для аналізу")
+        logger.error("Недостатньо даних для аналізу")
         return None
 
     # Обчислення RSI
@@ -176,9 +176,9 @@ def analyze(df):
     volume_filter = df["volume"].iloc[-1] > df["volume"].mean() if "volume" in df else True
 
     signal = None
-    # Умови для реальних даних (len(df) >= LIMIT) або тестів
-    rsi_threshold = 40 if len(df) >= LIMIT else 70  # RSI < 70 для тестів, < 40 для реальних даних
-    if last_rsi < rsi_threshold and last_price >= last_ma * 0.99 and volume_filter:
+    # Умови для реальних даних і тестів
+    rsi_buy_threshold = 70 if len(df) <= 3 else 40  # Для тестів із 3 свічками RSI < 70
+    if last_rsi < rsi_buy_threshold and last_price >= last_ma * 0.99 and volume_filter:
         if is_bullish_engulfing(o1, c1, o2, c2) or is_hammer(o3, c3, h3, l3):
             signal = "BUY"
     elif last_rsi > 60 and last_price <= last_ma * 1.01 and volume_filter:

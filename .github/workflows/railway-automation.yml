@@ -1,0 +1,32 @@
+name: Automate Railway Deployment
+
+on:
+  schedule:
+    # Деплой о 05:00 UTC (08:00 EEST) у понеділок–п’ятницю
+    - cron: '0 5 * * 1-5'
+    # Видалення о 19:00 UTC (22:00 EEST) у понеділок–п’ятницю
+    - cron: '0 19 * * 1-5'
+
+jobs:
+  manage-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Manage Railway Deployment
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          PROJECT_ID: 'your_project_id'
+          SERVICE_ID: 'your_service_id'
+        run: |
+          python .github/workflows/manage_deployment.py
