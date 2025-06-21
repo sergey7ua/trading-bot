@@ -1,5 +1,5 @@
 import os
-import time
+import time as time_module  # Псевдонім для модуля time
 import logging
 import requests
 import pandas as pd
@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
-from datetime import datetime, time
+from datetime import datetime
+from datetime import time as dt_time  # Псевдонім для datetime.time
 from zoneinfo import ZoneInfo
 
 # --- Налаштування логування ---
@@ -86,9 +87,9 @@ def get_klines(symbol, interval, limit=LIMIT):
         df = df[["open", "high", "low", "close", "volume"]].astype(float)
         df = df.iloc[::-1].reset_index(drop=True)
         remaining = response.headers.get("X-RateLimit-Remaining")
-        if int(remaining) < 10:
+        if remaining and int(remaining) < 10:
             logger.warning(f"Ліміт API низький: {remaining}. Очікування {API_WAIT_TIME} секунд")
-            time.sleep(API_WAIT_TIME)
+            time_module.sleep(API_WAIT_TIME)
         return df
     except Exception as e:
         logger.error(f"Помилка запиту до API: {e}")
@@ -216,7 +217,7 @@ def is_working_hours():
     kyiv_tz = ZoneInfo("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
     # Робочі дні (понеділок–п’ятниця) і час 08:00–22:00
-    return now.weekday() < 5 and time(8, 0) <= now.time() <= time(22, 0)
+    return now.weekday() < 5 and dt_time(8, 0) <= now.time() <= dt_time(22, 0)
 
 # --- Основний цикл ---
 if __name__ == "__main__":
@@ -226,4 +227,4 @@ if __name__ == "__main__":
     schedule.every(5).minutes.at(":00").do(lambda: job() if is_working_hours() else None)
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        time_module.sleep(1)
