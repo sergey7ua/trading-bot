@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
-import time  # Стандартний модуль для sleep
+import time  # Стандартний модуль для sleep і time
 from datetime import datetime, time  # datetime для дат, time для об’єктів часу
 from zoneinfo import ZoneInfo
 
