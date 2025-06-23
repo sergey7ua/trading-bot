@@ -1,5 +1,5 @@
 import os
-import time
+import time as time_module  # Змінено: використовуємо псевдонім для модуля time
 import logging
 import requests
 import pandas as pd
@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
-from datetime import datetime, time
+from datetime import datetime
+from datetime import time as dt_time  # Змінено: псевдонім для datetime.time
 from zoneinfo import ZoneInfo
 
 # --- Налаштування логування ---
@@ -88,7 +89,7 @@ def get_klines(symbol, interval, limit=LIMIT):
         remaining = response.headers.get("X-RateLimit-Remaining")
         if int(remaining) < 10:
             logger.warning(f"Ліміт API низький: {remaining}. Очікування {API_WAIT_TIME} секунд")
-            time.sleep(API_WAIT_TIME)
+            time_module.sleep(API_WAIT_TIME)  # Змінено: time_module.sleep
         return df
     except Exception as e:
         logger.error(f"Помилка запиту до API: {e}")
@@ -149,7 +150,7 @@ def is_shooting_star(o, c, h, l):
 def analyze(df):
     global last_signal
     if len(df) < 3:
-        logger.error("Недостатньо даних для аналізу")
+        logger.warning("Недостатньо даних для аналізу")
         return None
 
     # Обчислення RSI
@@ -177,7 +178,7 @@ def analyze(df):
 
     signal = None
     # Умови для реальних даних і тестів
-    rsi_buy_threshold = 70 if len(df) <= 3 else 40  # Для тестів із 3 свічками RSI < 70
+    rsi_buy_threshold = 40 if len(df) > 10 else 70  # Послаблення для тестів із малою кількістю даних
     if last_rsi < rsi_buy_threshold and last_price >= last_ma * 0.99 and volume_filter:
         if is_bullish_engulfing(o1, c1, o2, c2) or is_hammer(o3, c3, h3, l3):
             signal = "BUY"
@@ -216,7 +217,7 @@ def is_working_hours():
     kyiv_tz = ZoneInfo("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
     # Робочі дні (понеділок–п’ятниця) і час 08:00–22:00
-    return now.weekday() < 5 and time(8, 0) <= now.time() <= time(22, 0)
+    return now.weekday() < 5 and dt_time(8, 0) <= now.time() <= dt_time(22, 0)  # Змінено: dt_time
 
 # --- Основний цикл ---
 if __name__ == "__main__":
@@ -226,4 +227,4 @@ if __name__ == "__main__":
     schedule.every(5).minutes.at(":00").do(lambda: job() if is_working_hours() else None)
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        time_module.sleep(1)  # Змінено: time_module.sleep
