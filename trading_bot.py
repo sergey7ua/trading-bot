@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
-import time  # Стандартний модуль для sleep і time
-from datetime import datetime  # Для datetime і time
+import time  # Стандартний модуль для sleep
+from datetime import datetime, time  # datetime для дат, time для об’єктів часу
 from zoneinfo import ZoneInfo
 
 # --- Налаштування логування ---
@@ -217,7 +217,7 @@ def job():
 def is_working_hours():
     kyiv_tz = ZoneInfo("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
-    return now.weekday() < 5 and datetime.time(3, 0) <= now.time() <= datetime.time(22, 59)
+    return now.weekday() < 5 and time(3, 0) <= now.time() <= time(22, 59)
 
 # --- Основний цикл ---
 if __name__ == "__main__":
