@@ -8,7 +8,7 @@ import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
 import time  # Стандартний модуль для sleep і time
-from datetime import datetime, time  # datetime для дат, time для об’єктів часу
+from datetime import datetime, time as dtime  # datetime для дат, dtime для об’єктів часу
 from zoneinfo import ZoneInfo
 
 # --- Налаштування логування ---
@@ -184,46 +184,4 @@ def analyze(df):
         if is_bullish_engulfing(o1, c1, o2, c2) or is_hammer(o3, c3, h3, l3):
             signal = "BUY"
     elif last_rsi > 60 and last_price <= last_ma * 1.01 and volume_filter:
-        if is_bearish_engulfing(o1, c1, o2, c2) or is_shooting_star(o3, c3, h3, l3):
-            signal = "SELL"
-
-    if signal and signal != last_signal:
-        last_signal = signal
-        return signal
-    return None
-
-# --- Основна задача ---
-def job():
-    df = None
-    try:
-        update_config()
-        df = get_klines(SYMBOL, INTERVAL)
-        signal = analyze(df)
-        if signal:
-            price = df['close'].iloc[-1]
-            msg = f"{signal} сигнал по {SYMBOL} @ {price}"
-            send_telegram(msg)
-            logger.info(msg)
-        else:
-            logger.info("Сигналів немає.")
-    except Exception as e:
-        logger.error(f"Помилка в основному циклі: {e}")
-    finally:
-        df = None
-        import gc
-        gc.collect()
-
-# --- Перевірка робочих днів і часу ---
-def is_working_hours():
-    kyiv_tz = ZoneInfo("Europe/Kyiv")
-    now = datetime.now(kyiv_tz)
-    return now.weekday() < 5 and time(3, 0) <= now.time() <= time(22, 59)
-
-# --- Основний цикл ---
-if __name__ == "__main__":
-    logger.info("Бот запущено.")
-    send_telegram("Бот запущено на Railway")
-    schedule.every(5).minutes.at(":00").do(lambda: job() if is_working_hours() else None)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+        if is_bearish_engulfing(o1, c1, o2, c2) or is_shooting_star(o3
