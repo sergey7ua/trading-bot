@@ -1,82 +1,147 @@
 import os
 import requests
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
 
-# Отримання змінних середовища
-RAILWAY_API_TOKEN = os.getenv('RAILWAY_API_TOKEN')
-PROJECT_ID = os.getenv('PROJECT_ID')
-SERVICE_ID = os.getenv('SERVICE_ID')
+# Налаштування логування
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
-# Налаштування заголовків для API
-headers = {
-    'Authorization': f'Bearer {RAILWAY_API_TOKEN}',
-    'Content-Type': 'application/json'
+# Змінні середовища
+RAILWAY_TOKEN = os.getenv("RAILWAY_TOKEN")
+PROJECT_ID = os.getenv("PROJECT_ID")
+ENVIRONMENT_ID = os.getenv("ENVIRONMENT_ID")
+SERVICE_ID = os.getenv("SERVICE_ID")
+
+# Перевірка змінних середовища
+if not all([RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID]):
+    logger.error("Не встановлені всі необхідні змінні середовища")
+    raise ValueError("Не встановлені всі необхідні змінні середовища")
+
+# API URL
+RAILWAY_API_URL = "https://backboard.railway.app/graphql/v2"
+
+# Заголовки
+HEADERS = {
+    "Authorization": f"Bearer {RAILWAY_TOKEN}",
+    "Content-Type": "application/json",
 }
-
-# GraphQL URL
-graphql_url = 'https://backboard.railway.app/graphql/v2'
 
 def get_active_deployment():
     query = """
-    query ($projectId: String!, $serviceId: String!) {
-      service(projectId: $projectId, serviceId: $serviceId) {
-        deployments(first: 1, environmentId: null) {
-          edges {
-            node {
-              id
-              status
+    query Deployments($projectId: String!, $environmentId: String!, $serviceId: String!) {
+        deployments(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId) {
+            edges {
+                node {
+                    id
+                    status
+                }
             }
-          }
         }
-      }
     }
     """
-    variables = {'projectId': PROJECT_ID, 'serviceId': SERVICE_ID}
-    response = requests.post(graphql_url, json={'query': query, 'variables': variables}, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    edges = data['data']['service']['deployments']['edges']
-    return edges[0]['node']['id'] if edges and edges[0]['node']['status'] == 'SUCCESS' else None
+    variables = {
+        "projectId": PROJECT_ID,
+        "environmentId": ENVIRONMENT_ID,
+        "serviceId": SERVICE_ID
+    }
+    payload = {"query": query, "variables": variables}
+    
+    try:
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        if response.status_code != 200:
+            logger.error(f"HTTP {response.status_code}: {response.text}")
+            response.raise_for_status()
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return None
+        for edge in data["data"]["deployments"]["edges"]:
+            if edge["node"]["status"] == "ACTIVE":
+                return edge["node"]["id"]
+        return None
+    except Exception as e:
+        logger.error(f"Помилка в get_active_deployment: {e}")
+        return None
+
+def deploy_service():
+    mutation = """
+    mutation Deploy($input: DeploymentInput!) {
+        deploymentCreate(input: $input) {
+            id
+        }
+    }
+    """
+    variables = {
+        "input": {
+            "projectId": PROJECT_ID,
+            "environmentId": ENVIRONMENT_ID,
+            "serviceId": SERVICE_ID
+        }
+    }
+    payload = {"query": mutation, "variables": variables}
+    
+    try:
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        if response.status_code != 200:
+            logger.error(f"HTTP {response.status_code}: {response.text}")
+            response.raise_for_status()
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return None
+        return data["data"]["deploymentCreate"]["id"]
+    except Exception as e:
+        logger.error(f"Помилка в deploy_service: {e}")
+        return None
 
 def remove_deployment(deployment_id):
     mutation = """
-    mutation ($id: String!) {
-      deploymentRemove(id: $id)
+    mutation RemoveDeployment($id: String!) {
+        deploymentRemove(id: $id)
     }
     """
-    variables = {'id': deployment_id}
-    response = requests.post(graphql_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    response.raise_for_status()
-    print(f"Deployment {deployment_id} removed successfully")
+    variables = {"id": deployment_id}
+    payload = {"query": mutation, "variables": variables}
+    
+    try:
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        if response.status_code != 200:
+            logger.error(f"HTTP {response.status_code}: {response.text}")
+            response.raise_for_status()
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+    except Exception as e:
+        logger.error(f"Помилка в remove_deployment: {e}")
 
-def trigger_deployment():
-    mutation = """
-    mutation ($serviceId: String!) {
-      serviceDeploy(serviceId: $serviceId) {
-        id
-      }
-    }
-    """
-    variables = {'serviceId': SERVICE_ID}
-    response = requests.post(graphql_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    response.raise_for_status()
-    print("New deployment triggered successfully")
+def is_deployment_time():
+    kyiv_tz = ZoneInfo("Europe/Kyiv")
+    now = datetime.now(kyiv_tz)
+    return now.weekday() < 5 and dtime(3, 0) <= now.time() <= dtime(22, 59)
 
 if __name__ == "__main__":
-    # Визначення часу в UTC
-    now_utc = datetime.now(ZoneInfo("UTC")).time()
-    is_deploy_time = now_utc.hour == 5  # 05:00 UTC = 08:00 EEST
-    is_remove_time = now_utc.hour == 19  # 19:00 UTC = 22:00 EEST
-
-    if is_remove_time:
+    logger.info("Скрипт запущено")
+    if is_deployment_time():
+        deployment_id = get_active_deployment()
+        if not deployment_id:
+            deployment_id = deploy_service()
+            if deployment_id:
+                logger.info(f"Розгорнуто сервіс з ID: {deployment_id}")
+            else:
+                logger.error("Не вдалося розгорнути сервіс")
+        else:
+            logger.info(f"Знайдено активний деплой: {deployment_id}")
+    else:
         deployment_id = get_active_deployment()
         if deployment_id:
             remove_deployment(deployment_id)
+            logger.info(f"Видалено деплой: {deployment_id}")
         else:
-            print("No active deployment found")
-    elif is_deploy_time:
-        trigger_deployment()
-    else:
-        print("No action required at this time")
+            logger.info("Немає активного деплою для видалення")
