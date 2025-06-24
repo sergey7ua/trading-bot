@@ -22,23 +22,28 @@ SERVICE_ID = os.getenv("SERVICE_ID")
 
 # Перевірка змінних середовища
 if not all([RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID]):
-    logger.error("Не встановлені всі необхідні змінні середовища")
+    logger.error("Не встановлені всі необхідні змінні середовища: RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID")
     raise ValueError("Не встановлені всі необхідні змінні середовища")
+
+# Очистка ID від префіксів
+PROJECT_ID = PROJECT_ID.replace("project/", "").strip()
+ENVIRONMENT_ID = ENVIRONMENT_ID.replace("env/", "").strip()
+SERVICE_ID = SERVICE_ID.replace("service/", "").strip()
 
 # API URL
 RAILWAY_API_URL = "https://backboard.railway.app/graphql/v2"
 
 # Заголовки
 HEADERS = {
-    "Project-Access-Token": RAILWAY_TOKEN,  # Для проєктного токена
+    "Authorization": f"Bearer {RAILWAY_TOKEN}",
     "Content-Type": "application/json",
 }
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def get_active_deployment():
     query = """
-    query Deployments($projectId: String!, $environmentId: String!, $serviceId: String!) {
-        deployments(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId) {
+    query GetDeployments($projectId: String!, $environmentId: String!, $serviceId: String) {
+        deployments(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId, first: 10) {
             edges {
                 node {
                     id
@@ -55,9 +60,9 @@ def get_active_deployment():
     }
     payload = {"query": query, "variables": variables}
     
+    logger.info(f"Надсилаємо запит get_active_deployment: {json.dumps(payload, indent=2)}")
     try:
-        logger.info(f"Надсилаємо запит get_active_deployment: {json.dumps(payload, indent=2)}")
-        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -65,13 +70,14 @@ def get_active_deployment():
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
             return None
-        for edge in data["data"]["deployments"]["edges"]:
-            if edge["node"]["status"] == "ACTIVE":
+        for edge in data.get("data", {}).get("deployments", {}).get("edges", []):
+            if edge["node"]["status"] == "SUCCESS":
                 logger.info(f"Знайдено активний деплой: {edge['node']['id']}")
                 return edge["node"]["id"]
+        logger.info("Активний деплой не знайдено")
         return None
     except Exception as e:
-        logger.error(f"Помилка в get_active_deployment: {e}")
+        logger.error(f"Помилка в get_active_deployment: {str(e)}")
         raise
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -80,6 +86,7 @@ def deploy_service():
     mutation Deploy($input: DeploymentInput!) {
         deploymentCreate(input: $input) {
             id
+            status
         }
     }
     """
@@ -92,9 +99,9 @@ def deploy_service():
     }
     payload = {"query": mutation, "variables": variables}
     
+    logger.info(f"Надсилаємо запит deploy_service: {json.dumps(payload, indent=2)}")
     try:
-        logger.info(f"Надсилаємо запит deploy_service: {json.dumps(payload, indent=2)}")
-        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -102,42 +109,52 @@ def deploy_service():
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
             return None
-        deployment_id = data["data"]["deploymentCreate"]["id"]
-        logger.info(f"Розгорнуто сервіс з ID: {deployment_id}")
-        return deployment_id
+        deployment_id = data.get("data", {}).get("deploymentCreate", {}).get("id")
+        if deployment_id:
+            logger.info(f"Розгорнуто сервіс з ID: {deployment_id}")
+            return deployment_id
+        logger.error("Не вдалося отримати ID деплою")
+        return None
     except Exception as e:
-        logger.error(f"Помилка в deploy_service: {e}")
+        logger.error(f"Помилка в deploy_service: {str(e)}")
         raise
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def remove_deployment(deployment_id):
     mutation = """
     mutation RemoveDeployment($id: String!) {
-        deploymentRemove(id: $id)
+        deploymentRemove(id: $id) {
+            success
+        }
     }
     """
     variables = {"id": deployment_id}
     payload = {"query": mutation, "variables": variables}
     
+    logger.info(f"Надсилаємо запит remove_deployment: {json.dumps(payload, indent=2)}")
     try:
-        logger.info(f"Надсилаємо запит remove_deployment: {json.dumps(payload, indent=2)}")
-        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload)
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
         data = response.json()
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
-        else:
+            return
+        if data.get("data", {}).get("deploymentRemove", {}).get("success"):
             logger.info(f"Видалено деплой: {deployment_id}")
+        else:
+            logger.error(f"Не вдалося видалити деплой: {deployment_id}")
     except Exception as e:
-        logger.error(f"Помилка в remove_deployment: {e}")
+        logger.error(f"Помилка в remove_deployment: {str(e)}")
         raise
 
 def is_deployment_time():
     kyiv_tz = ZoneInfo("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
-    return now.weekday() < 5 and dtime(3, 0) <= now.time() <= dtime(22, 59)
+    result = now.weekday() < 5 and dtime(3, 0) <= now.time() <= dtime(22, 59)
+    logger.info(f"Перевірка часу деплою: {result} (час: {now})")
+    return result
 
 if __name__ == "__main__":
     logger.info("Скрипт запущено")
@@ -160,5 +177,5 @@ if __name__ == "__main__":
             else:
                 logger.info("Немає активного деплою для видалення")
     except Exception as e:
-        logger.error(f"Критична помилка в скрипті: {e}")
-        exit(1)
+        logger.error(f"Критична помилка в скрипті: {str(e)}")
+        raise
