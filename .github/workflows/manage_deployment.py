@@ -20,16 +20,6 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 ENVIRONMENT_ID = os.getenv("ENVIRONMENT_ID")
 SERVICE_ID = os.getenv("SERVICE_ID")
 
-# Перевірка змінних середовища
-if not all([RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID]):
-    logger.error("Не встановлені всі необхідні змінні середовища: RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID")
-    raise ValueError("Не встановлені всі необхідні змінні середовища")
-
-# Очистка ID від префіксів
-PROJECT_ID = PROJECT_ID.replace("project/", "").strip()
-ENVIRONMENT_ID = ENVIRONMENT_ID.replace("env/", "").strip()
-SERVICE_ID = SERVICE_ID.replace("service/", "").strip()
-
 # API URL
 RAILWAY_API_URL = "https://backboard.railway.app/graphql/v2"
 
@@ -39,11 +29,84 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
+# Перевірка змінних середовища
+def validate_environment_variables():
+    if not all([RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID]):
+        logger.error("Не встановлені всі необхідні змінні середовища: RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID")
+        raise ValueError("Не встановлені всі необхідні змінні середовища")
+    # Очистка ID від префіксів
+    cleaned_project_id = PROJECT_ID.replace("project/", "").strip()
+    cleaned_environment_id = ENVIRONMENT_ID.replace("env/", "").strip()
+    cleaned_service_id = SERVICE_ID.replace("service/", "").strip()
+    return cleaned_project_id, cleaned_environment_id, cleaned_service_id
+
+# Отримання списку проєктів для валідації ID
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def validate_project_and_service():
+    query = """
+    query {
+        projects {
+            edges {
+                node {
+                    id
+                    name
+                    environments {
+                        edges {
+                            node {
+                                id
+                                name
+                            }
+                        }
+                    }
+                    services {
+                        edges {
+                            node {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
+    payload = {"query": query}
+    logger.info(f"Надсилаємо запит validate_project_and_service: {json.dumps(payload, indent=2)}")
+    try:
+        response = requests.post(RAILWAY_API_URL, headers=HEADERS, json=payload, timeout=10)
+        if response.status_code != 200:
+            logger.error(f"HTTP {response.status_code}: {response.text}")
+            response.raise_for_status()
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return None
+        projects = data.get("data", {}).get("projects", {}).get("edges", [])
+        for project in projects:
+            project_id = project["node"]["id"]
+            if project_id == PROJECT_ID:
+                logger.info(f"Знайдено проєкт: {project['node']['name']} (ID: {project_id})")
+                environments = project["node"].get("environments", {}).get("edges", [])
+                for env in environments:
+                    if env["node"]["id"] == ENVIRONMENT_ID:
+                        logger.info(f"Знайдено середовище: {env['node']['name']} (ID: {ENVIRONMENT_ID})")
+                services = project["node"].get("services", {}).get("edges", [])
+                for svc in services:
+                    if svc["node"]["id"] == SERVICE_ID:
+                        logger.info(f"Знайдено сервіс: {svc['node']['name']} (ID: {SERVICE_ID})")
+                        return True
+        logger.error(f"Проєкт, середовище або сервіс не знайдено: PROJECT_ID={PROJECT_ID}, ENVIRONMENT_ID={ENVIRONMENT_ID}, SERVICE_ID={SERVICE_ID}")
+        return False
+    except Exception as e:
+        logger.error(f"Помилка в validate_project_and_service: {str(e)}")
+        return False
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def get_active_deployment():
     query = """
-    query GetDeployments($projectId: String!, $environmentId: String!, $serviceId: String) {
-        deployments(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId, first: 10) {
+    query GetDeployments($projectId: String!, $environmentId: String!) {
+        deployments(projectId: $projectId, environmentId: $environmentId, first: 10) {
             edges {
                 node {
                     id
@@ -55,8 +118,7 @@ def get_active_deployment():
     """
     variables = {
         "projectId": PROJECT_ID,
-        "environmentId": ENVIRONMENT_ID,
-        "serviceId": SERVICE_ID
+        "environmentId": ENVIRONMENT_ID
     }
     payload = {"query": query, "variables": variables}
     
@@ -159,6 +221,16 @@ def is_deployment_time():
 if __name__ == "__main__":
     logger.info("Скрипт запущено")
     try:
+        # Валідація змінних
+        global PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID
+        PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID = validate_environment_variables()
+        
+        # Перевірка проєкту та сервісу
+        if not validate_project_and_service():
+            logger.error("Валідація проєкту/середовища/сервісу не пройшла. Перевірте ID у GitHub Secrets.")
+            raise ValueError("Невалідні PROJECT_ID, ENVIRONMENT_ID або SERVICE_ID")
+        
+        # Основна логіка
         if is_deployment_time():
             deployment_id = get_active_deployment()
             if not deployment_id:
