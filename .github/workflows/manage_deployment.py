@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # API URL
-RAILWAY_API_URL = "https://backboard.railway.app"
+RAILWAY_API_URL = "https://backboard.railway.app/graphql/v2"
 
 # Заголовки
 def get_headers(token):
@@ -43,19 +43,33 @@ def validate_environment_variables():
     
     return token, cleaned_project_id, cleaned_environment_id, cleaned_service_id
 
-# Перевірка токена через REST API
+# Перевірка токена через GraphQL API
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def validate_token(token):
-    url = f"{RAILWAY_API_URL}/user"
-    logger.info(f"Надсилаємо запит validate_token до {url}")
+    query = """
+    query {
+        me {
+            id
+            email
+        }
+    }
+    """
+    payload = {"query": query}
+    logger.info(f"Надсилаємо запит validate_token до {RAILWAY_API_URL}")
     try:
-        response = requests.get(url, headers=get_headers(token), timeout=10)
+        response = requests.post(RAILWAY_API_URL, headers=get_headers(token), json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
         data = response.json()
-        if "email" in data:
-            logger.info(f"Токен валідний для користувача: {data['email']}")
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            if any("Unauthorized" in error.get("message", "") for error in data["errors"]):
+                logger.error("Токен невалідний або не має доступу")
+                return False
+            return False
+        if data.get("data", {}).get("me", {}).get("email"):
+            logger.info(f"Токен валідний для користувача: {data['data']['me']['email']}")
             return True
         logger.error("Токен невалідний: відповідь не містить даних користувача")
         return False
@@ -63,26 +77,58 @@ def validate_token(token):
         logger.error(f"Помилка в validate_token: {str(e)}")
         return False
 
-# Перевірка проєкту та сервісу через REST API
+# Перевірка проєкту та сервісу через GraphQL API
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def validate_project_and_service(token, project_id, environment_id, service_id):
-    url = f"{RAILWAY_API_URL}/projects"
-    logger.info(f"Надсилаємо запит validate_project_and_service до {url}")
+    query = """
+    query {
+        projects {
+            edges {
+                node {
+                    id
+                    name
+                    environments {
+                        edges {
+                            node {
+                                id
+                                name
+                            }
+                        }
+                    }
+                    services {
+                        edges {
+                            node {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
+    payload = {"query": query}
+    logger.info(f"Надсилаємо запит validate_project_and_service до {RAILWAY_API_URL}")
     try:
-        response = requests.get(url, headers=get_headers(token), timeout=10)
+        response = requests.post(RAILWAY_API_URL, headers=get_headers(token), json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
-        projects = response.json().get("data", [])
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return False
+        projects = data.get("data", {}).get("projects", {}).get("edges", [])
         for project in projects:
-            if project["id"] == project_id:
-                logger.info(f"Знайдено проєкт: {project['name']} (ID: {project_id})")
-                for env in project.get("environments", []):
-                    if env["id"] == environment_id:
-                        logger.info(f"Знайдено середовище: {env['name']} (ID: {environment_id})")
-                for svc in project.get("services", []):
-                    if svc["id"] == service_id:
-                        logger.info(f"Знайдено сервіс: {svc['name']} (ID: {service_id})")
+            if project["node"]["id"] == project_id:
+                logger.info(f"Знайдено проєкт: {project['node']['name']} (ID: {project_id})")
+                for env in project["node"].get("environments", {}).get("edges", []):
+                    if env["node"]["id"] == environment_id:
+                        logger.info(f"Знайдено середовище: {env['node']['name']} (ID: {environment_id})")
+                for svc in project["node"].get("services", {}).get("edges", []):
+                    if svc["node"]["id"] == service_id:
+                        logger.info(f"Знайдено сервіс: {svc['node']['name']} (ID: {service_id})")
                         return True
         logger.error(f"Проєкт, середовище або сервіс не знайдено: PROJECT_ID={project_id}, ENVIRONMENT_ID={environment_id}, SERVICE_ID={service_id}")
         return False
@@ -93,18 +139,37 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
 # Перевірка активного деплою
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def get_active_deployment(token, project_id, environment_id):
-    url = f"{RAILWAY_API_URL}/projects/{project_id}/environments/{environment_id}/deployments"
-    logger.info(f"Надсилаємо запит get_active_deployment до {url}")
+    query = """
+    query GetDeployments($projectId: String!, $environmentId: String!) {
+        deployments(projectId: $projectId, environmentId: $environmentId, first: 10) {
+            edges {
+                node {
+                    id
+                    status
+                }
+            }
+        }
+    }
+    """
+    variables = {
+        "projectId": project_id,
+        "environmentId": environment_id
+    }
+    payload = {"query": query, "variables": variables}
+    logger.info(f"Надсилаємо запит get_active_deployment: {json.dumps(payload, indent=2)}")
     try:
-        response = requests.get(url, headers=get_headers(token), timeout=10)
+        response = requests.post(RAILWAY_API_URL, headers=get_headers(token), json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
-        deployments = response.json().get("data", [])
-        for dep in deployments:
-            if dep["status"] == "SUCCESS":
-                logger.info(f"Знайдено активний деплой: {dep['id']}")
-                return dep["id"]
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return None
+        for edge in data.get("data", {}).get("deployments", {}).get("edges", []):
+            if edge["node"]["status"] == "SUCCESS":
+                logger.info(f"Знайдено активний деплой: {edge['node']['id']}")
+                return edge["node"]["id"]
         logger.info("Активний деплой не знайдено")
         return None
     except Exception as e:
@@ -114,15 +179,33 @@ def get_active_deployment(token, project_id, environment_id):
 # Розгортання сервісу
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def deploy_service(token, project_id, environment_id, service_id):
-    url = f"{RAILWAY_API_URL}/projects/{project_id}/environments/{environment_id}/services/{service_id}/redeploy"
-    logger.info(f"Надсилаємо запит deploy_service до {url}")
+    mutation = """
+    mutation Deploy($input: DeploymentInput!) {
+        deploymentCreate(input: $input) {
+            id
+            status
+        }
+    }
+    """
+    variables = {
+        "input": {
+            "projectId": project_id,
+            "environmentId": environment_id,
+            "serviceId": service_id
+        }
+    }
+    payload = {"query": mutation, "variables": variables}
+    logger.info(f"Надсилаємо запит deploy_service: {json.dumps(payload, indent=2)}")
     try:
-        response = requests.post(url, headers=get_headers(token), timeout=10)
+        response = requests.post(RAILWAY_API_URL, headers=get_headers(token), json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
         data = response.json()
-        deployment_id = data.get("data", {}).get("id")
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return None
+        deployment_id = data.get("data", {}).get("deploymentCreate", {}).get("id")
         if deployment_id:
             logger.info(f"Розгорнуто сервіс з ID: {deployment_id}")
             return deployment_id
@@ -135,14 +218,29 @@ def deploy_service(token, project_id, environment_id, service_id):
 # Видалення деплою
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def remove_deployment(token, project_id, environment_id, deployment_id):
-    url = f"{RAILWAY_API_URL}/projects/{project_id}/environments/{environment_id}/deployments/{deployment_id}"
-    logger.info(f"Надсилаємо запит remove_deployment до {url}")
+    mutation = """
+    mutation RemoveDeployment($id: String!) {
+        deploymentRemove(id: $id) {
+            success
+        }
+    }
+    """
+    variables = {"id": deployment_id}
+    payload = {"query": mutation, "variables": variables}
+    logger.info(f"Надсилаємо запит remove_deployment: {json.dumps(payload, indent=2)}")
     try:
-        response = requests.delete(url, headers=get_headers(token), timeout=10)
+        response = requests.post(RAILWAY_API_URL, headers=get_headers(token), json=payload, timeout=10)
         if response.status_code != 200:
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
-        logger.info(f"Видалено деплой: {deployment_id}")
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
+            return
+        if data.get("data", {}).get("deploymentRemove", {}).get("success"):
+            logger.info(f"Видалено деплой: {deployment_id}")
+        else:
+            logger.error(f"Не вдалося видалити деплой: {deployment_id}")
     except Exception as e:
         logger.error(f"Помилка в remove_deployment: {str(e)}")
         raise
