@@ -119,17 +119,33 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
             return False
+        
         projects = data.get("data", {}).get("projects", {}).get("edges", [])
+        if not projects:
+            logger.error("Список проєктів порожній. Перевірте доступ токена.")
+            return False
+        
+        # Логування всіх доступних проєктів, середовищ і сервісів
+        logger.info("Доступні проєкти:")
+        for project in projects:
+            project_data = project["node"]
+            logger.info(f"Проєкт: {project_data['name']} (ID: {project_data['id']})")
+            for env in project_data.get("environments", {}).get("edges", []):
+                logger.info(f"  Середовище: {env['node']['name']} (ID: {env['node']['id']})")
+            for svc in project_data.get("services", {}).get("edges", []):
+                logger.info(f"  Сервіс: {svc['node']['name']} (ID: {svc['node']['id']})")
+        
+        # Перевірка відповідності ID
         for project in projects:
             if project["node"]["id"] == project_id:
                 logger.info(f"Знайдено проєкт: {project['node']['name']} (ID: {project_id})")
                 for env in project["node"].get("environments", {}).get("edges", []):
                     if env["node"]["id"] == environment_id:
                         logger.info(f"Знайдено середовище: {env['node']['name']} (ID: {environment_id})")
-                for svc in project["node"].get("services", {}).get("edges", []):
-                    if svc["node"]["id"] == service_id:
-                        logger.info(f"Знайдено сервіс: {svc['node']['name']} (ID: {service_id})")
-                        return True
+                        for svc in project["node"].get("services", {}).get("edges", []):
+                            if svc["node"]["id"] == service_id:
+                                logger.info(f"Знайдено сервіс: {svc['node']['name']} (ID: {service_id})")
+                                return True
         logger.error(f"Проєкт, середовище або сервіс не знайдено: PROJECT_ID={project_id}, ENVIRONMENT_ID={environment_id}, SERVICE_ID={service_id}")
         return False
     except Exception as e:
