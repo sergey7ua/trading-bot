@@ -116,13 +116,14 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
             logger.error(f"HTTP {response.status_code}: {response.text}")
             response.raise_for_status()
         data = response.json()
+        logger.info(f"Повна відповідь GraphQL: {json.dumps(data, indent=2)}")
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
             return False
         
         projects = data.get("data", {}).get("projects", {}).get("edges", [])
         if not projects:
-            logger.error("Список проєктів порожній. Перевірте, чи є активні проєкти в акаунті та чи використовується Account Token.")
+            logger.error("Список проєктів порожній. Перевірте, чи є активні проєкти в акаунті, чи використовується Account Token, чи не заблоковано IP.")
             return False
         
         # Логування всіх доступних проєктів, середовищ і сервісів
