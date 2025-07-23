@@ -27,18 +27,18 @@ def get_headers(token):
 # Перевірка змінних середовища
 def validate_environment_variables():
     token = os.getenv("RAILWAY_TOKEN")
-    project_id = os.getenv("PROJECT_ID")
-    environment_id = os.getenv("ENVIRONMENT_ID")
-    service_id = os.getenv("SERVICE_ID")
+    project_id = os.getenv("PROJECT_ID") or os.getenv("RAILWAY_PROJECT_ID")
+    environment_id = os.getenv("ENVIRONMENT_ID") or os.getenv("RAILWAY_ENVIRONMENT_ID")
+    service_id = os.getenv("SERVICE_ID") or os.getenv("RAILWAY_SERVICE_ID")
     
     if not all([token, project_id, environment_id, service_id]):
-        logger.error("Не встановлені всі необхідні змінні середовища: RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, SERVICE_ID")
+        logger.error("Не встановлені всі необхідні змінні середовища: RAILWAY_TOKEN, PROJECT_ID/RAILWAY_PROJECT_ID, ENVIRONMENT_ID/RAILWAY_ENVIRONMENT_ID, SERVICE_ID/RAILWAY_SERVICE_ID")
         raise ValueError("Не встановлені всі необхідні змінні середовища")
     
     # Очистка ID від префіксів
-    cleaned_project_id = project_id.replace("project/", "").strip()
-    cleaned_environment_id = environment_id.replace("env/", "").strip()
-    cleaned_service_id = service_id.replace("service/", "").strip()
+    cleaned_project_id = project_id.replace("project/", "").strip() if project_id else None
+    cleaned_environment_id = environment_id.replace("env/", "").strip() if environment_id else None
+    cleaned_service_id = service_id.replace("service/", "").strip() if service_id else None
     logger.info(f"Валідовані ID: PROJECT_ID={cleaned_project_id}, ENVIRONMENT_ID={cleaned_environment_id}, SERVICE_ID={cleaned_service_id}")
     
     return token, cleaned_project_id, cleaned_environment_id, cleaned_service_id
@@ -122,7 +122,7 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
         
         projects = data.get("data", {}).get("projects", {}).get("edges", [])
         if not projects:
-            logger.error("Список проєктів порожній. Перевірте доступ токена.")
+            logger.error("Список проєктів порожній. Перевірте, чи є активні проєкти в акаунті та чи використовується Account Token.")
             return False
         
         # Логування всіх доступних проєктів, середовищ і сервісів
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         
         # Перевірка проєкту та сервісу
         if not validate_project_and_service(token, project_id, environment_id, service_id):
-            logger.error("Валідація проєкту/середовища/сервісу не пройшла. Перевірте ID у GitHub Secrets.")
+            logger.error("Валідація проєкту/середовища/сервісу не пройшла. Перевірте ID у GitHub Secrets або Railway Provided Variables.")
             raise ValueError("Невалідні PROJECT_ID, ENVIRONMENT_ID або SERVICE_ID")
         
         # Основна логіка
