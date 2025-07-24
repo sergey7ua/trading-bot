@@ -1,25 +1,44 @@
-name: Railway Deployment via API
+name: Automate Railway Deployment
+
 on:
   schedule:
-    - cron: '0 0 * * 1-5' # 00:00 UTC (3:00 EEST)
-    - cron: '59 19 * * 1-5' # 19:59 UTC (22:59 EEST)
+    # Запуск щоденно з понеділка по п'ятницю о 00:00 та 19:59 UTC (3:00 та 22:59 EEST)
+    - cron: '0 0,19 * * 1-5'
   workflow_dispatch:
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Trigger Deployment
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Railway CLI
         run: |
-          if [ $(date +%u) -le 5 ] && [ $(date +%H) -ge 3 ] && [ $(date +%H) -le 22 ]; then
-            curl -X POST \
-              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "query": "mutation { deploymentTrigger(input: { projectId: \"${{ secrets.RAILWAY_PROJECT_ID }}\", environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\" }) { id } }"
-              }' \
-              https://backboard.railway.app/graphql/v2
+          npm install -g @railway/cli@latest
+          railway --version
+        env:
+          NODE_VERSION: 20 # Вказуємо стабільну версію Node.js для npm
+
+      - name: Login to Railway
+        run: railway login --token ${{ secrets.RAILWAY_TOKEN }}
+        continue-on-error: true # Продовжуємо, якщо логін не вдався, для логування помилки
+
+      - name: Deploy service
+        run: |
+          # Перевіряємо день тижня та час (3:00–22:59 EEST, тобто 0:00–19:59 UTC)
+          CURRENT_DAY=$(date -u +%u)
+          CURRENT_HOUR=$(date -u +%H)
+          if [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -ge 0 ] && [ "$CURRENT_HOUR" -le 19 ]; then
+            railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --detach || {
+              echo "Deployment failed"
+              exit 1
+            }
+            echo "Deployment triggered successfully"
           else
-            echo "Not in deployment time window"
+            echo "Outside deployment time window (Mon-Fri, 3:00–22:59 EEST)"
+            exit 0
           fi
+        env:
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
