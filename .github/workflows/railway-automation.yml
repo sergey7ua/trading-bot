@@ -10,27 +10,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
+      - name: Install Railway CLI via npm
+        run: |
+          npm install -g @railway/cli
+          echo "$(npm root -g)/@railway/cli/bin" >> $GITHUB_PATH
       
       - name: Configure Railway Auth
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           mkdir -p ~/.railway
-          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-          echo "Auth configured"
+          echo "$RAILWAY_TOKEN" > ~/.railway/token
+          echo "Auth token configured"
       
       - name: Link Project
         env:
           RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
-          echo "{\"project\":\"$RAILWAY_PROJECT_ID\"}" > ~/.railway/context.json
+          railway switch $RAILWAY_PROJECT_ID
           echo "Project linked"
       
       - name: Run Deployment
