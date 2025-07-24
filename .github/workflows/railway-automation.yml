@@ -23,11 +23,11 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           echo "$RAILWAY_TOKEN" | railway login --token
-          railway link ${{ secrets.PROJECT_ID }}
+          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
       
       - name: Run Deployment
         env:
-          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
         run: |
           railway up --service $RAILWAY_SERVICE_ID --detach
           echo "🚀 Deployment started for service $RAILWAY_SERVICE_ID"
