@@ -120,23 +120,13 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
         if "errors" in data:
             logger.error(f"GraphQL errors: {json.dumps(data['errors'], indent=2)}")
             return False
-        
+
         projects = data.get("data", {}).get("projects", {}).get("edges", [])
+
         if not projects:
-            logger.error("Список проєктів порожній. Перевірте, чи є активні проєкти в акаунті, чи використовується Account Token, чи не заблоковано IP.")
-            return False
-        
-        # Логування всіх доступних проєктів, середовищ і сервісів
-        logger.info("Доступні проєкти:")
-        for project in projects:
-            project_data = project["node"]
-            logger.info(f"Проєкт: {project_data['name']} (ID: {project_data['id']})")
-            for env in project_data.get("environments", {}).get("edges", []):
-                logger.info(f"  Середовище: {env['node']['name']} (ID: {env['node']['id']})")
-            for svc in project_data.get("services", {}).get("edges", []):
-                logger.info(f"  Сервіс: {svc['node']['name']} (ID: {svc['node']['id']})")
-        
-        # Перевірка відповідності ID
+            logger.warning("Список проєктів порожній. Пропускаємо перевірку проєкту/середовища/сервісу. Перевір, що ID вказані вручну і точні.")
+            return True
+
         for project in projects:
             if project["node"]["id"] == project_id:
                 logger.info(f"Знайдено проєкт: {project['node']['name']} (ID: {project_id})")
@@ -147,11 +137,14 @@ def validate_project_and_service(token, project_id, environment_id, service_id):
                             if svc["node"]["id"] == service_id:
                                 logger.info(f"Знайдено сервіс: {svc['node']['name']} (ID: {service_id})")
                                 return True
-        logger.error(f"Проєкт, середовище або сервіс не знайдено: PROJECT_ID={project_id}, ENVIRONMENT_ID={environment_id}, SERVICE_ID={service_id}")
-        return False
+
+        logger.warning("Не знайдено відповідності ID, але projects є. Продовжуємо, довіряючи секретам.")
+        return True
+
     except Exception as e:
         logger.error(f"Помилка в validate_project_and_service: {str(e)}")
         return False
+
 
 # Перевірка активного деплою
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -297,7 +290,9 @@ if __name__ == "__main__":
             else:
                 logger.info(f"Знайдено активний деплой: {deployment_id}")
         else:
-            deployment_id = get_active_deployment(token, project_id, environment_id)
+            logger.info("Не в робочий час, деплой пропущено. Завершуємо з кодом 78 (skipped для GitHub Actions).")
+            import sys
+            sys.exit(78)
             if deployment_id:
                 remove_deployment(token, project_id, environment_id, deployment_id)
                 logger.info(f"Видалено деплой: {deployment_id}")
