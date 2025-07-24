@@ -18,18 +18,16 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
       
-      - name: Configure Railway
+      - name: Login to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
         run: |
-          mkdir -p ~/.railway
-          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-          npx railway link $RAILWAY_PROJECT_ID
-          echo "Linked to project $RAILWAY_PROJECT_ID"
+          echo "$RAILWAY_TOKEN" | railway login --token
+          railway link ${{ secrets.PROJECT_ID }}
       
       - name: Run Deployment
+        env:
+          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
         run: |
-          npx railway up --service ${{ secrets.SERVICE_ID }} --detach
-          echo "🚀 Deployment started for service ${{ secrets.SERVICE_ID }}"
+          railway up --service $RAILWAY_SERVICE_ID --detach
+          echo "🚀 Deployment started for service $RAILWAY_SERVICE_ID"
