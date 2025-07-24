@@ -14,25 +14,27 @@ jobs:
         run: |
           curl -fsSL https://cli.railway.app/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
+          echo "PATH updated: $PATH"
       
-      - name: Configure Auth and Project
+      - name: Verify CLI Installation
+        run: |
+          echo "Current PATH: $PATH"
+          ls -la $HOME/.railway/bin
+          $HOME/.railway/bin/railway --version
+      
+      - name: Configure Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
           mkdir -p ~/.railway
-          # Зберігаємо токен
           echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-          # Вказуємо проект через змінну середовища
-          echo "RAILWAY_PROJECT_ID=$RAILWAY_PROJECT_ID" >> $GITHUB_ENV
-          echo "Configuration done"
-      
-      - name: Verify Setup
-        run: railway whoami
+          echo "{\"project\":\"$RAILWAY_PROJECT_ID\"}" > ~/.railway/context.json
+          echo "Configuration created"
       
       - name: Run Deployment
         env:
           RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
         run: |
-          railway up --service $RAILWAY_SERVICE_ID --detach
+          $HOME/.railway/bin/railway up --service $RAILWAY_SERVICE_ID --detach
           echo "🚀 Deployment started for service $RAILWAY_SERVICE_ID"
