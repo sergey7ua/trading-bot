@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential
 import schedule
-import time  # Стандартний модуль для sleep і time
-from datetime import datetime, time as dtime  # datetime для дат, dtime для об’єктів часу
+import time
+from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
 
 # --- Налаштування логування ---
@@ -65,7 +65,7 @@ def get_klines(symbol, interval, limit=LIMIT):
     url = "https://api.twelvedata.com/time_series"
     params = {
         "symbol": symbol,
-        "interval": interval,
+        "interval": "3min",  # Змінено на 3-хвилинний таймфрейм
         "outputsize": limit,
         "apikey": TD_API_KEY
     }
@@ -77,7 +77,6 @@ def get_klines(symbol, interval, limit=LIMIT):
             logger.error(f"Некоректна відповідь API: {data}")
             raise ValueError("Некоректна відповідь API")
         df = pd.DataFrame(data["values"])
-        # Вибір тільки необхідних стовпців, ігноруючи volume, якщо відсутній
         columns = ["open", "high", "low", "close"]
         available_columns = [col for col in columns if col in df.columns]
         if len(available_columns) < 4:
@@ -152,7 +151,7 @@ def analyze(df):
     global last_signal
     if len(df) < 3:
         logger.warning("Недостатньо даних для аналізу")
-        return None
+        return None, None
 
     # Обчислення RSI
     try:
@@ -171,26 +170,31 @@ def analyze(df):
     # Дані для свічок
     o1, c1 = df["open"].iloc[-3], df["close"].iloc[-3]
     o2, c2 = df["open"].iloc[-2], df["close"].iloc[-2]
-    o3, c3 = df["open"].iloc[-1], df["close"].iloc[-1]
+    o3, c3 = df["high"].iloc[-1], df["low"].iloc[-1]
     h3, l3 = df["high"].iloc[-1], df["low"].iloc[-1]
 
-    # Фільтр обсягу (вимкнено, якщо volume відсутній)
-    volume_filter = True  # За замовчуванням True, оскільки volume недоступний для EUR/USD
+    # Фільтр обсягу (вимкнено для EUR/USD)
+    volume_filter = True
 
     signal = None
-    # Умови для реальних даних і тестів
-    rsi_buy_threshold = 40 if len(df) > 10 else 70  # Послаблення для тестів
+    pattern = None
+    # Умови для сигналів
+    rsi_buy_threshold = 40 if len(df) > 10 else 70
     if last_rsi < rsi_buy_threshold and last_price >= last_ma * 0.99 and volume_filter:
-        if is_bullish_engulfing(o1, c1, o2, c2) or is_hammer(o3, c3, h3, l3):
-            signal = "BUY"
+        if is_bullish_engulfing(o1, c1, o2, c2):
+            signal, pattern = "BUY", "Bullish Engulfing"
+        elif is_hammer(o3, c3, h3, l3):
+            signal, pattern = "BUY", "Hammer"
     elif last_rsi > 60 and last_price <= last_ma * 1.01 and volume_filter:
-        if is_bearish_engulfing(o1, c1, o2, c2) or is_shooting_star(o3, c3, h3, l3):
-            signal = "SELL"
+        if is_bearish_engulfing(o1, c1, o2, c2):
+            signal, pattern = "SELL", "Bearish Engulfing"
+        elif is_shooting_star(o3, c3, h3, l3):
+            signal, pattern = "SELL", "Shooting Star"
 
     if signal and signal != last_signal:
         last_signal = signal
-        return signal
-    return None
+        return signal, pattern, last_rsi, last_ma, last_price
+    return None, None, last_rsi, last_ma, last_price
 
 # --- Основна задача ---
 def job():
@@ -198,10 +202,14 @@ def job():
     try:
         update_config()
         df = get_klines(SYMBOL, INTERVAL)
-        signal = analyze(df)
-        if signal:
-            price = df['close'].iloc[-1]
-            msg = f"{signal} сигнал по {SYMBOL} @ {price}"
+        signal, pattern, rsi, ma, price = analyze(df)
+        if signal and pattern:
+            msg = (
+                f"{signal} сигнал по {SYMBOL} @ {price:.5f}\n"
+                f"Патерн: {pattern}\n"
+                f"RSI: {rsi:.2f}\n"
+                f"MA ({MA_TYPE}, {MA_PERIOD}): {ma:.5f}"
+            )
             send_telegram(msg)
             logger.info(msg)
         else:
@@ -213,17 +221,17 @@ def job():
         import gc
         gc.collect()
 
-# --- Перевірка робочих днів і часу ---
+# --- Перевірка робочих годин ---
 def is_working_hours():
     kyiv_tz = ZoneInfo("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
-    return now.weekday() < 5 and dtime(3, 0) <= now.time() <= dtime(22, 59)
+    return now.weekday() < 5 and dtime(8, 0) <= now.time() <= dtime(23, 0)
 
 # --- Основний цикл ---
 if __name__ == "__main__":
     logger.info("Бот запущено.")
     send_telegram("Бот запущено на Railway")
-    schedule.every(5).minutes.at(":00").do(lambda: job() if is_working_hours() else None)
+    schedule.every(3).minutes.do(lambda: job() if is_working_hours() else None)
     while True:
         schedule.run_pending()
         time.sleep(1)
