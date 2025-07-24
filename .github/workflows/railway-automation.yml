@@ -15,7 +15,7 @@ jobs:
 
       - name: Set up Railway CLI
         run: |
-          npm install -g @railway/cli@latest
+          npm install -g @railway/cli@3.11.2
           railway --version
         env:
           NODE_VERSION: 20
@@ -26,11 +26,15 @@ jobs:
             echo "Error: RAILWAY_TOKEN is not set"
             exit 1
           fi
-          echo "${{ secrets.RAILWAY_TOKEN }}" | railway login --non-interactive
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
+          railway login
         continue-on-error: true
 
       - name: Verify login
-        run: railway whoami || { echo "Login verification failed"; exit 1; }
+        run: |
+          railway whoami || { echo "Login verification failed"; exit 1; }
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy service
         run: |
@@ -47,5 +51,6 @@ jobs:
             exit 0
           fi
         env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
