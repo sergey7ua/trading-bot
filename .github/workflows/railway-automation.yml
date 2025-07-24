@@ -15,10 +15,17 @@ jobs:
 
       - name: Set up Railway CLI
         run: |
-          npm install -g @railway/cli@3.11.2
+          npm install -g @railway/cli@4.5.4
           railway --version
         env:
           NODE_VERSION: 20
+
+      - name: Debug info
+        run: |
+          echo "Railway CLI version: $(railway --version)"
+          echo "RAILWAY_TOKEN is set: ${RAILWAY_TOKEN+x}"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Login to Railway
         run: |
