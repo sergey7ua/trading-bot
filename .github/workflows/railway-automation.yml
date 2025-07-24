@@ -13,18 +13,16 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/railwayapp/cli/master/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
       
-      - name: Setup Railway Token
+      - name: Setup Railway Config
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          mkdir -p ~/.railway
-          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-      
-      - name: Deploy
-        run: |
-          railway switch ${{ secrets.PROJECT_ID }}
-          railway up --service ${{ secrets.SERVICE_ID }} --detach
-          echo "🚀 Deployment started!"
-        env:
           RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.ENVIRONMENT_ID }}
+        run: |
+          mkdir -p ~/.railway
+          echo "{\"token\":\"$RAILWAY_TOKEN\",\"projectId\":\"$RAILWAY_PROJECT_ID\",\"environmentId\":\"$RAILWAY_ENVIRONMENT_ID\"}" > ~/.railway/config.json
+      
+      - name: Run Deployment
+        run: |
+          railway up --service ${{ secrets.SERVICE_ID }} --detach
+          echo "🚀 Deployment triggered successfully!"
