@@ -18,15 +18,16 @@ jobs:
           npm install -g @railway/cli@latest
           railway --version
         env:
-          NODE_VERSION: 20 # Вказуємо стабільну версію Node.js для npm
+          NODE_VERSION: 20
 
       - name: Login to Railway
-        run: railway login --token ${{ secrets.RAILWAY_TOKEN }}
-        continue-on-error: true # Продовжуємо, якщо логін не вдався, для логування помилки
+        run: railway login
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        continue-on-error: true
 
       - name: Deploy service
         run: |
-          # Перевіряємо день тижня та час (3:00–22:59 EEST, тобто 0:00–19:59 UTC)
           CURRENT_DAY=$(date -u +%u)
           CURRENT_HOUR=$(date -u +%H)
           if [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -ge 0 ] && [ "$CURRENT_HOUR" -le 19 ]; then
