@@ -13,55 +13,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Railway CLI
-        run: |
-          npm cache clean --force
-          npm install -g @railway/cli@4.5.4
-          railway --version
-        env:
-          NODE_VERSION: 20
-
       - name: Debug info
         run: |
-          echo "Railway CLI version: $(railway --version)"
           echo "RAILWAY_TOKEN is set: ${RAILWAY_TOKEN+x}"
-          npm config get registry
+          echo "Current UTC time: $(date -u +%H:%M)"
+          echo "Current day: $(date -u +%u)"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Login to Railway
+      - name: Verify token
         run: |
           if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
             echo "Error: RAILWAY_TOKEN is not set"
             exit 1
           fi
-          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
-          railway login
-        continue-on-error: true
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Verify login
-        run: |
-          railway whoami || { echo "Login verification failed"; exit 1; }
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy service
+      - name: Deploy via Railway API
         run: |
           CURRENT_DAY=$(date -u +%u)
           CURRENT_HOUR=$(date -u +%H)
           if [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -ge 0 ] && [ "$CURRENT_HOUR" -le 19 ]; then
-            railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --detach || {
-              echo "Deployment failed"
-              exit 1
-            }
-            echo "Deployment triggered successfully"
+            curl --request POST \
+              --url https://backboard.railway.app/graphql/v2 \
+              --header "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data '{"query":"mutation ServiceInstanceRedeploy { serviceInstanceRedeploy(environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"}' \
+              || { echo "API deployment failed"; exit 1; }
+            echo "Deployment triggered successfully via API"
           else
             echo "Outside deployment time window (Mon-Fri, 3:00–22:59 EEST)"
             exit 0
           fi
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
