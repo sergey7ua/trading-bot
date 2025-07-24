@@ -1,8 +1,8 @@
-name: Railway Auto Deploy
+name: Railway Deployment via API
 on:
   schedule:
-    - cron: '0 0 * * 1-5' # Пн-Пт о 3:00 EEST
-    - cron: '59 19 * * 1-5' # Пн-Пт о 22:59 EEST
+    - cron: '0 0 * * 1-5' # 00:00 UTC (3:00 EEST)
+    - cron: '59 19 * * 1-5' # 19:59 UTC (22:59 EEST)
   workflow_dispatch:
 jobs:
   deploy:
@@ -10,29 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Railway CLI
+      - name: Trigger Deployment
         run: |
-          # Створюємо директорію перед інсталяцією
-          mkdir -p $HOME/.railway/bin
-          curl -fsSL https://cli.railway.app/install.sh | sh
-          echo "$HOME/.railway/bin" >> $GITHUB_PATH
-          echo "Installed version: $($HOME/.railway/bin/railway --version)"
-      
-      - name: Configure Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
-        run: |
-          mkdir -p ~/.railway
-          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-          echo "{\"project\":\"$RAILWAY_PROJECT_ID\"}" > ~/.railway/context.json
-      
-      - name: Verify Setup
-        run: $HOME/.railway/bin/railway whoami
-      
-      - name: Run Deployment
-        env:
-          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
-        run: |
-          $HOME/.railway/bin/railway up --service $RAILWAY_SERVICE_ID --detach
-          echo "🚀 Deployment started for service $RAILWAY_SERVICE_ID"
+          if [ $(date +%u) -le 5 ] && [ $(date +%H) -ge 3 ] && [ $(date +%H) -le 22 ]; then
+            curl -X POST \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "mutation { deploymentTrigger(input: { projectId: \"${{ secrets.RAILWAY_PROJECT_ID }}\", environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\" }) { id } }"
+              }' \
+              https://backboard.railway.app/graphql/v2
+          else
+            echo "Not in deployment time window"
+          fi
