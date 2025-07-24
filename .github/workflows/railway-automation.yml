@@ -10,12 +10,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Deploy via Railway Action
-        uses: railwayapp/action@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          railway-token: ${{ secrets.RAILWAY_TOKEN }}
-          project-id: ${{ secrets.RAILWAY_PROJECT_ID }}
-          service-id: ${{ secrets.RAILWAY_SERVICE_ID }}
-          command: up --detach
+          node-version: '18'
+      
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      
+      - name: Configure Railway
         env:
-          RAILWAY_ENVIRONMENT_ID: ${{ secrets.ENVIRONMENT_ID }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
+        run: |
+          mkdir -p ~/.railway
+          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
+          npx railway link $RAILWAY_PROJECT_ID
+          echo "Linked to project $RAILWAY_PROJECT_ID"
+      
+      - name: Run Deployment
+        run: |
+          npx railway up --service ${{ secrets.SERVICE_ID }} --detach
+          echo "🚀 Deployment started for service ${{ secrets.SERVICE_ID }}"
