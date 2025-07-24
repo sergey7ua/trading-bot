@@ -8,14 +8,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via Railway Docker
+      - uses: actions/checkout@v4
+      
+      - name: Deploy via Railway Action
+        uses: railwayapp/action@v2
+        with:
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+          project-id: ${{ secrets.RAILWAY_PROJECT_ID }}
+          service-id: ${{ secrets.RAILWAY_SERVICE_ID }}
+          command: up --detach
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-        run: |
-          docker run --rm \
-            -e RAILWAY_TOKEN=$RAILWAY_TOKEN \
-            railwayapp/cli:latest \
-            railway up --service $RAILWAY_SERVICE_ID --detach --project $RAILWAY_PROJECT_ID
-          echo "🚀 Deployment triggered for service $RAILWAY_SERVICE_ID"
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.ENVIRONMENT_ID }}
