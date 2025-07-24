@@ -35,8 +35,11 @@ jobs:
             echo "Error: RAILWAY_TOKEN is not set"
             exit 1
           fi
-          echo "${{ secrets.RAILWAY_TOKEN }}" | railway login --token
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
+          railway login
         continue-on-error: true
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Verify login
         run: |
