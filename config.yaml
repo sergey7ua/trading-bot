@@ -1,6 +1,6 @@
 symbol: "EUR/USD"
 rsi_period: 14
-interval: "5min"
+interval: "3min"
 limit: 30
 ma_period: 20
 ma_type: "SMA"
