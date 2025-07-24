@@ -21,10 +21,16 @@ jobs:
           NODE_VERSION: 20
 
       - name: Login to Railway
-        run: railway login
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "Error: RAILWAY_TOKEN is not set"
+            exit 1
+          fi
+          echo "${{ secrets.RAILWAY_TOKEN }}" | railway login --non-interactive
         continue-on-error: true
+
+      - name: Verify login
+        run: railway whoami || { echo "Login verification failed"; exit 1; }
 
       - name: Deploy service
         run: |
