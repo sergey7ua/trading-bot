@@ -2,8 +2,8 @@ name: Automate Railway Deployment
 
 on:
   schedule:
-    # Запуск щоденно з понеділка по п'ятницю о 00:00 та 19:59 UTC (3:00 та 22:59 EEST)
-    - cron: '0 0,19 * * 1-5'
+    # Запуск щоденно з понеділка по п'ятницю о 5:00 UTC (8:00 EEST) та 20:00 UTC (23:00 EEST)
+    - cron: '0 5,20 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -27,12 +27,17 @@ jobs:
             echo "Error: RAILWAY_TOKEN is not set"
             exit 1
           fi
+          if [ -z "${{ secrets.RAILWAY_PROJECT_ID }}" ] || [ -z "${{ secrets.RAILWAY_ENVIRONMENT_ID }}" ] || [ -z "${{ secrets.RAILWAY_SERVICE_ID }}" ]; then
+            echo "Error: RAILWAY_PROJECT_ID, RAILWAY_ENVIRONMENT_ID, or RAILWAY_SERVICE_ID is not set"
+            exit 1
+          fi
 
-      - name: Deploy via Railway API
+      - name: Deploy or stop service
         run: |
           CURRENT_DAY=$(date -u +%u)
           CURRENT_HOUR=$(date -u +%H)
-          if [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -ge 0 ] && [ "$CURRENT_HOUR" -le 19 ]; then
+          if [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -eq 5 ]; then
+            echo "Deploying service at 8:00 EEST"
             curl --request POST \
               --url https://backboard.railway.app/graphql/v2 \
               --header "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
@@ -40,8 +45,17 @@ jobs:
               --data '{"query":"mutation ServiceInstanceRedeploy { serviceInstanceRedeploy(environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"}' \
               || { echo "API deployment failed"; exit 1; }
             echo "Deployment triggered successfully via API"
+          elif [ "$CURRENT_DAY" -le 5 ] && [ "$CURRENT_HOUR" -eq 20 ]; then
+            echo "Stopping service at 23:00 EEST"
+            curl --request POST \
+              --url https://backboard.railway.app/graphql/v2 \
+              --header "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data '{"query":"mutation ServiceInstanceStop { serviceInstanceStop(environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"}' \
+              || { echo "API stop failed"; exit 1; }
+            echo "Service stopped successfully via API"
           else
-            echo "Outside deployment time window (Mon-Fri, 3:00–22:59 EEST)"
+            echo "Outside deployment/stop time window (Mon-Fri, 8:00 or 23:00 EEST)"
             exit 0
           fi
         env:
