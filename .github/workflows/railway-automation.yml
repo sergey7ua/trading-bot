@@ -8,30 +8,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Railway CLI
-        run: |
-          curl -fsSL https://cli.railway.app/install.sh | sh
-          echo "$HOME/.railway/bin" >> $GITHUB_PATH
-          echo "PATH: $PATH"  # Для дебагінгу
-      
-      - name: Verify CLI installation
-        run: |
-          which railway
-          railway --version
-      
-      - name: Configure Railway
+      - name: Deploy via Railway Docker
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
         run: |
-          mkdir -p ~/.railway
-          echo "{\"token\":\"$RAILWAY_TOKEN\"}" > ~/.railway/config.json
-          $HOME/.railway/bin/railway link $RAILWAY_PROJECT_ID
-          echo "Linked to project $RAILWAY_PROJECT_ID"
-      
-      - name: Run Deployment
-        env:
-          RAILWAY_SERVICE_ID: ${{ secrets.SERVICE_ID }}
-        run: |
-          $HOME/.railway/bin/railway up --service $RAILWAY_SERVICE_ID --detach
-          echo "🚀 Deployment started for service $RAILWAY_SERVICE_ID"
+          docker run --rm \
+            -e RAILWAY_TOKEN=$RAILWAY_TOKEN \
+            railwayapp/cli:latest \
+            railway up --service $RAILWAY_SERVICE_ID --detach --project $RAILWAY_PROJECT_ID
+          echo "🚀 Deployment triggered for service $RAILWAY_SERVICE_ID"
