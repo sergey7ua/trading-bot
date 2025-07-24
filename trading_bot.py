@@ -65,7 +65,7 @@ def get_klines(symbol, interval, limit=LIMIT):
     url = "https://api.twelvedata.com/time_series"
     params = {
         "symbol": symbol,
-        "interval": "3min",  # Змінено на 3-хвилинний таймфрейм
+        "interval": "1min",  # Змінено на 1min, оскільки 3min не підтримується
         "outputsize": limit,
         "apikey": TD_API_KEY
     }
@@ -151,7 +151,7 @@ def analyze(df):
     global last_signal
     if len(df) < 3:
         logger.warning("Недостатньо даних для аналізу")
-        return None, None
+        return None, None, None, None, None
 
     # Обчислення RSI
     try:
@@ -170,7 +170,7 @@ def analyze(df):
     # Дані для свічок
     o1, c1 = df["open"].iloc[-3], df["close"].iloc[-3]
     o2, c2 = df["open"].iloc[-2], df["close"].iloc[-2]
-    o3, c3 = df["high"].iloc[-1], df["low"].iloc[-1]
+    o3, c3 = df["open"].iloc[-1], df["close"].iloc[-1]
     h3, l3 = df["high"].iloc[-1], df["low"].iloc[-1]
 
     # Фільтр обсягу (вимкнено для EUR/USD)
@@ -178,7 +178,6 @@ def analyze(df):
 
     signal = None
     pattern = None
-    # Умови для сигналів
     rsi_buy_threshold = 40 if len(df) > 10 else 70
     if last_rsi < rsi_buy_threshold and last_price >= last_ma * 0.99 and volume_filter:
         if is_bullish_engulfing(o1, c1, o2, c2):
